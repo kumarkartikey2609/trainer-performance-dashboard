@@ -534,8 +534,8 @@ async function fetchRedashQuery(queryId, onStatus){
   if(pj.query_result && pj.query_result.data) return pj.query_result.data.rows || [];
   const jobId = pj.job && pj.job.id;
   if(!jobId) throw new Error('No job ID returned');
-  for(let i=0;i<90;i++){
-    onStatus('Running… ('+(i+1)+'s)');
+  for(let i=0;i<600;i++){
+    onStatus('Running… ('+(i+1)+'s, this query can take ~4-5 min)');
     await new Promise(r=>setTimeout(r,1000));
     const jr = await fetch(REDASH_BASE+'/api/jobs/'+jobId+'?api_key='+encodeURIComponent(REDASH_API_KEY), {mode:'cors'});
     const jj = await jr.json();
