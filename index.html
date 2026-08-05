@@ -98,6 +98,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 
 /* ---------- Sections & eyebrows ---------- */
 .section-block{margin-bottom:var(--gap);}
+.section-block,.pivot-section,.table-section,.filters{scroll-margin-top:260px;}
 .section-eyebrow{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .section-eyebrow::before{content:"";width:18px;height:3px;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));display:inline-block;}
 
@@ -113,6 +114,10 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .kpi-label{font-size:12px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;font-weight:700;}
 .kpi-value{font-size:29px;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.2;}
 .kpi-sub{font-size:12px;color:var(--text-secondary);margin-top:2px;}
+.kpi-delta{font-size:12px;font-weight:700;margin-top:6px;}
+.kpi-delta.up{color:#047857;}
+.kpi-delta.down{color:#b91c1c;}
+.kpi-delta.flat{color:var(--text-secondary);}
 
 /* ---------- Cards: charts / tables / pivot ---------- */
 .chart-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:var(--gap);margin-bottom:var(--gap);align-items:stretch;}
@@ -184,6 +189,8 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
 .pivot-table tbody th{position:sticky;left:0;background:#fff;text-align:left;font-weight:700;z-index:2;box-shadow:2px 0 6px rgba(80,30,150,.08);border-right:2px solid var(--accent);}
 .pivot-table .pivot-trainer-col{min-width:170px;}
 .pivot-table thead .pivot-trainer-col{position:sticky;left:0;top:0;z-index:4;background:var(--accent-soft);border-right:2px solid var(--accent);}
+.pivot-table .pivot-trend-head,.pivot-table .pivot-trend-cell{min-width:130px;position:sticky;left:170px;z-index:2;background:#fff;border-right:2px solid var(--accent);text-align:center;}
+.pivot-table thead .pivot-trend-head{top:0;z-index:4;background:var(--accent-soft);}
 .pivot-table tbody tr:nth-child(even) th{background:#fbf9ff;}
 .pivot-table tbody tr:hover td{filter:brightness(0.97);}
 .pivot-table .pivot-band-a{background-color:rgba(124,58,237,.025);}
@@ -302,21 +309,25 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
           <div class="kpi-top"><div class="kpi-label">Retraining Records</div><div class="kpi-icon">🎓</div></div>
           <div class="kpi-value" id="kpi-providers">0</div>
           <div class="kpi-sub" id="kpi-providers-sub"></div>
+          <div class="kpi-delta" id="kpi-providers-delta"></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-top"><div class="kpi-label">F20 Completed</div><div class="kpi-icon">✅</div></div>
           <div class="kpi-value" id="kpi-f20">0%</div>
           <div class="kpi-sub" id="kpi-f20-sub"></div>
+          <div class="kpi-delta" id="kpi-f20-delta"></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-top"><div class="kpi-label">Avg F20 Rating</div><div class="kpi-icon">⭐</div></div>
           <div class="kpi-value" id="kpi-rating">0.00</div>
           <div class="kpi-sub" id="kpi-rating-sub"></div>
+          <div class="kpi-delta" id="kpi-rating-delta"></div>
         </div>
         <div class="kpi-card">
           <div class="kpi-top"><div class="kpi-label">Improvement Rate (&ge;4.8)</div><div class="kpi-icon">📈</div></div>
           <div class="kpi-value" id="kpi-improve">0%</div>
           <div class="kpi-sub" id="kpi-improve-sub"></div>
+          <div class="kpi-delta" id="kpi-improve-delta"></div>
         </div>
       </section>
     </div>
@@ -352,6 +363,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
         <div class="chart-container">
           <h3>Avg F20 Rating by Trainer</h3>
           <div class="chart-canvas-wrap"><canvas id="chart-trainer-rating"></canvas></div>
+          <p id="trainer-rating-note" style="font-size:11px;color:var(--text-secondary);margin-top:6px;"></p>
         </div>
         <div class="chart-container">
           <h3>Monthly Volume &amp; Improvement Rate</h3>
@@ -551,6 +563,7 @@ async function fetchRedashQuery(queryId, onStatus){
 }
 
 if(typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+Chart.defaults.animation = false; // perf: avoid animation cost on every filter/re-render
 Chart.defaults.set('plugins.datalabels', { display:false }); // opt-in per chart below so nothing gets labelled by accident
 
 function formatValue(value, format){
@@ -887,15 +900,20 @@ class Dashboard{
   }
 
   renderAll(){
+    // perf: render the visible-on-load stuff synchronously, defer the two
+    // heaviest DOM builds (pivot + detail table) a frame so the browser can
+    // paint in between instead of one long blocking task.
     this.renderKPIs();
     this.renderTrainerRatingChart();
     this.renderTrendChart();
     this.renderLevelTrainerChart();
     this.renderCityChart();
-    this.renderPivot();
-    this.renderLevelImprovement();
     this.renderTrainerTable();
-    this.renderDetailTable();
+    this.renderLevelImprovement();
+    setTimeout(() => {
+      this.renderPivot();
+      setTimeout(() => { this.renderDetailTable(); }, 0);
+    }, 0);
   }
 
   renderKPIs(){
@@ -914,6 +932,39 @@ class Dashboard{
     document.getElementById('kpi-rating-sub').textContent = `across ${f20Rows.length.toLocaleString()} scored events`;
     document.getElementById('kpi-improve').textContent = formatValue(improvePct,'percent');
     document.getElementById('kpi-improve-sub').textContent = 'share of events with avg rating ≥ 4.8';
+
+    // month-over-month deltas: compare the latest month present in the
+    // filtered data against the one before it, so the KPI row shows whether
+    // things are trending up or down, not just a static snapshot.
+    const months = [...new Set(d.map(r=>r.monthKey))].filter(m=>m!=='Unknown').sort();
+    const setDelta = (id, curVal, prevVal, fmt, higherIsBetter=true) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      if(months.length < 2 || prevVal === null || curVal === null || isNaN(curVal) || isNaN(prevVal)){
+        el.textContent = ''; el.className = 'kpi-delta'; return;
+      }
+      const diff = curVal - prevVal;
+      const dir = Math.abs(diff) < 1e-9 ? 'flat' : (diff>0 ? 'up' : 'down');
+      const goodDir = (dir==='up' && higherIsBetter) || (dir==='down' && !higherIsBetter);
+      el.className = 'kpi-delta ' + (dir==='flat' ? 'flat' : (goodDir ? 'up' : 'down'));
+      const arrow = dir==='up' ? '▲' : (dir==='down' ? '▼' : '▬');
+      const diffText = fmt==='percent' ? `${diff>=0?'+':''}${diff.toFixed(1)}pp` : (fmt==='rating' ? `${diff>=0?'+':''}${diff.toFixed(2)}` : `${diff>=0?'+':''}${diff.toFixed(0)}`);
+      el.textContent = `${arrow} ${diffText} vs ${formatMonth(months[months.length-2])}`;
+    };
+    if(months.length >= 2){
+      const lastM = months[months.length-1], prevM = months[months.length-2];
+      const curRows = d.filter(r=>r.monthKey===lastM), prevRows = d.filter(r=>r.monthKey===prevM);
+      const pct = (rows, pred) => rows.length ? rows.filter(pred).length/rows.length*100 : null;
+      const avg = (rows) => { const s = rows.filter(r=>!isNaN(r.f20rating)); return s.length ? s.reduce((a,r)=>a+r.f20rating,0)/s.length : null; };
+      setDelta('kpi-providers-delta', curRows.length, prevRows.length, 'count');
+      setDelta('kpi-f20-delta', pct(curRows,r=>r.f20completed===1), pct(prevRows,r=>r.f20completed===1), 'percent');
+      setDelta('kpi-rating-delta', avg(curRows), avg(prevRows), 'rating');
+      setDelta('kpi-improve-delta', pct(curRows,r=>r.improvement===1), pct(prevRows,r=>r.improvement===1), 'percent');
+    } else {
+      ['kpi-providers-delta','kpi-f20-delta','kpi-rating-delta','kpi-improve-delta'].forEach(id=>{
+        const el = document.getElementById(id); if(el){ el.textContent=''; }
+      });
+    }
   }
 
   groupByTrainer(data){
@@ -930,17 +981,23 @@ class Dashboard{
 
   renderTrainerRatingChart(){
     const groups = this.groupByTrainer();
-    const rows = [...groups.entries()].map(([name, rs]) => {
+    const MIN_N = 5; // exclude tiny/unreliable sample sizes from the ranked comparison
+    const all = [...groups.entries()].map(([name, rs]) => {
       const scored = rs.filter(r => !isNaN(r.f20rating));
       const avg = scored.length ? scored.reduce((s,r)=>s+r.f20rating,0)/scored.length : null;
       return { name, avg, n: rs.length };
-    }).filter(r => r.avg !== null).sort((a,b) => b.avg - a.avg).slice(0,25);
+    }).filter(r => r.avg !== null);
+    const rows = all.filter(r => r.name !== 'Unassigned' && r.n >= MIN_N)
+      .sort((a,b) => b.avg - a.avg).slice(0,25);
+    const excluded = all.filter(r => r.name === 'Unassigned' || r.n < MIN_N);
+
+    const colorFor = (avg) => avg>=4.8 ? '#10b981CC' : (avg>=4.6 ? '#f59e0bCC' : '#ef4444CC');
 
     this.destroyChart('trainerRating');
     const ctx = document.getElementById('chart-trainer-rating').getContext('2d');
     this.charts.trainerRating = new Chart(ctx, {
       type: 'bar',
-      data: { labels: rows.map(r=>r.name), datasets: [{ label:'Avg F20 Rating', data: rows.map(r=>r.avg), backgroundColor: rows.map(r => r.avg>=4.8 ? '#10b981CC' : '#ef4444CC'), borderRadius:5 }] },
+      data: { labels: rows.map(r=>r.name), datasets: [{ label:'Avg F20 Rating', data: rows.map(r=>r.avg), backgroundColor: rows.map(r => colorFor(r.avg)), borderRadius:5 }] },
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         layout:{ padding:{ right:36 } },
         plugins:{
@@ -951,6 +1008,13 @@ class Dashboard{
         },
         scales:{ x:{ min:0, max:5, ticks:{ stepSize:1 } } } }
     });
+
+    const noteEl = document.getElementById('trainer-rating-note');
+    if(noteEl){
+      noteEl.textContent = excluded.length
+        ? `Excludes ${excluded.map(r=>`${r.name} (n=${r.n})`).join(', ')} — sample size too small (<${MIN_N}) for a reliable comparison.`
+        : '';
+    }
   }
 
   renderTrendChart(){
@@ -1069,7 +1133,32 @@ class Dashboard{
     const groupDivider = 'border-right:2px solid var(--accent);';
     const band = (j) => j % 2 === 0 ? 'pivot-band-a' : 'pivot-band-b';
 
-    let html = '<table class="pivot-table"><thead><tr><th class="pivot-trainer-col" rowspan="2">Trainer</th>';
+    // compact pass-rate sparkline per trainer, so a scan of the "Trend" column
+    // shows who's improving/declining without reading 21 total/pass/fail columns
+    const sparkline = (byMonth) => {
+      const pts = months.map(m => {
+        const c = byMonth[m];
+        return c.total > 0 ? (c.passRows.length / c.total * 100) : null;
+      });
+      const have = pts.filter(v => v !== null);
+      if(have.length < 2) return '<span style="font-size:11px;color:var(--text-secondary);">not enough data</span>';
+      const w = 90, h = 28, step = w / (pts.length - 1);
+      const y = (v) => h - (v/100)*h;
+      let path = '', dots = '';
+      pts.forEach((v,i) => {
+        if(v === null) return;
+        const x = i*step;
+        path += (path ? 'L' : 'M') + x.toFixed(1) + ',' + y(v).toFixed(1) + ' ';
+        const color = v>=70 ? '#10b981' : (v>=50 ? '#f59e0b' : '#ef4444');
+        dots += `<circle cx="${x.toFixed(1)}" cy="${y(v).toFixed(1)}" r="2.3" fill="${color}"></circle>`;
+      });
+      const last = have[have.length-1], first = have[0];
+      const arrow = last>first ? '▲' : (last<first ? '▼' : '▬');
+      const arrowColor = last>first ? '#047857' : (last<first ? '#b91c1c' : '#6b7280');
+      return `<svg width="${w}" height="${h}" style="vertical-align:middle;"><path d="${path}" fill="none" stroke="#a78bfa" stroke-width="1.5"/>${dots}</svg> <span style="font-size:11px;font-weight:700;color:${arrowColor};">${arrow} ${last.toFixed(0)}%</span>`;
+    };
+
+    let html = '<table class="pivot-table"><thead><tr><th class="pivot-trainer-col" rowspan="2">Trainer</th><th rowspan="2" class="pivot-trend-head" title="Pass-rate trend across the months shown">Trend</th>';
     months.forEach((m,j) => { html += `<th colspan="3" class="${band(j)}" style="${groupDivider}">${formatMonth(m)}</th>`; });
     if(showOverall) html += `<th colspan="3" class="pivot-overall-head" style="border-left:2px solid var(--accent-2);">Overall</th>`;
     html += '</tr><tr>';
@@ -1081,6 +1170,7 @@ class Dashboard{
 
     trainerRows.forEach((tr, i) => {
       html += `<tr><th class="pivot-trainer-col" data-drill="row-${i}" title="Double-click for this trainer's raw data">${tr.name}</th>`;
+      html += `<td class="pivot-trend-cell">${sparkline(tr.byMonth)}</td>`;
       months.forEach((m, j) => {
         const cell = tr.byMonth[m];
         const t = sub(cell.total, 'total'), p = sub(cell.passRows.length, 'pass'), f = sub(cell.failRows.length, 'fail');
@@ -1101,26 +1191,32 @@ class Dashboard{
     html += '</tbody></table><p class="drill-hint" style="text-align:center;margin-top:10px;">Double-click a trainer name, or any Total/Pass/Fail number, to view the underlying raw records.</p>';
     wrap.innerHTML = html;
 
+    // perf: one delegated listener instead of ~180 individual DOM queries/listeners
+    const drillLookup = new Map();
     trainerRows.forEach((tr, i) => {
-      const rowHeader = wrap.querySelector(`[data-drill="row-${i}"]`);
-      if(rowHeader) rowHeader.addEventListener('dblclick', () => this.openDrilldown(tr.overall.rows, `${tr.name} — Overall`));
-
-      const wireCell = (key, label, rows) => {
-        const el = wrap.querySelector(`[data-drill="${key}"]`);
-        if(el && rows.length) el.addEventListener('dblclick', () => this.openDrilldown(rows, `${tr.name} — ${label}`));
-      };
+      drillLookup.set(`row-${i}`, { rows: tr.overall.rows, label: `${tr.name} — Overall` });
       months.forEach((m, j) => {
         const cell = tr.byMonth[m];
-        wireCell(`t-${i}-${j}-total`, `${formatMonth(m)} — Total Retraining`, cell.rows);
-        wireCell(`t-${i}-${j}-pass`, `${formatMonth(m)} — Retraining Pass`, cell.passRows);
-        wireCell(`t-${i}-${j}-fail`, `${formatMonth(m)} — Retraining Fail`, cell.failRows);
+        drillLookup.set(`t-${i}-${j}-total`, { rows: cell.rows, label: `${tr.name} — ${formatMonth(m)} — Total Retraining` });
+        drillLookup.set(`t-${i}-${j}-pass`, { rows: cell.passRows, label: `${tr.name} — ${formatMonth(m)} — Retraining Pass` });
+        drillLookup.set(`t-${i}-${j}-fail`, { rows: cell.failRows, label: `${tr.name} — ${formatMonth(m)} — Retraining Fail` });
       });
       if(showOverall){
-        wireCell(`t-${i}-overall-total`, 'Overall — Total Retraining', tr.overall.rows);
-        wireCell(`t-${i}-overall-pass`, 'Overall — Retraining Pass', tr.overall.passRows);
-        wireCell(`t-${i}-overall-fail`, 'Overall — Retraining Fail', tr.overall.failRows);
+        drillLookup.set(`t-${i}-overall-total`, { rows: tr.overall.rows, label: `${tr.name} — Overall — Total Retraining` });
+        drillLookup.set(`t-${i}-overall-pass`, { rows: tr.overall.passRows, label: `${tr.name} — Overall — Retraining Pass` });
+        drillLookup.set(`t-${i}-overall-fail`, { rows: tr.overall.failRows, label: `${tr.name} — Overall — Retraining Fail` });
       }
     });
+    if(!wrap.dataset.drillWired){
+      wrap.addEventListener('dblclick', (e) => {
+        const el = e.target.closest('[data-drill]');
+        if(!el) return;
+        const entry = wrap.__drillLookup && wrap.__drillLookup.get(el.dataset.drill);
+        if(entry && entry.rows.length) this.openDrilldown(entry.rows, entry.label);
+      });
+      wrap.dataset.drillWired = '1';
+    }
+    wrap.__drillLookup = drillLookup;
   }
 
   renderLevelImprovement(){
@@ -1200,15 +1296,19 @@ class Dashboard{
       { field:'improvedOfF20', label:'Improved (of F20 Completed)', combo:'improvedOfF20Pct' },
       { field:'overallImproved', label:'Overall Improvement', combo:'overallImprovedPct' }
     ];
+    const medal = (rank) => rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':null;
     const render = (data) => {
-      let html = '<table class="data-table"><thead><tr>';
+      let html = '<table class="data-table"><thead><tr><th style="width:36px;"></th>';
       cols.forEach(c => {
         const arrow = sortCol===c.field ? (sortDir==='asc'?' ▲':' ▼') : '';
         html += `<th data-field="${c.field}">${c.label}${arrow}</th>`;
       });
       html += '</tr></thead><tbody>';
       data.forEach((row, idx) => {
-        html += `<tr class="drill-row" data-drill-idx="${idx}" title="Double-click for this trainer's raw data"><td>${row.trainer}</td><td>${row.total.toLocaleString()}</td>`;
+        const rank = idx+1;
+        const m = medal(rank);
+        const rankCell = m ? `<span title="Rank #${rank} by overall improvement">${m}</span>` : `<span style="color:var(--text-secondary);font-weight:600;">#${rank}</span>`;
+        html += `<tr class="drill-row" data-drill-idx="${idx}" title="Double-click for this trainer's raw data"><td>${rankCell}</td><td>${row.trainer}</td><td>${row.total.toLocaleString()}</td>`;
         html += `<td>${row.f20done.toLocaleString()} <span class="badge neutral">${row.f20pct.toFixed(0)}%</span></td>`;
         html += `<td>${row.improvedOfF20.toLocaleString()} <span class="badge ${row.improvedOfF20Pct>=50?'good':'bad'}">${row.improvedOfF20Pct.toFixed(0)}%</span></td>`;
         html += `<td>${row.overallImproved.toLocaleString()} <span class="badge ${row.overallImprovedPct>=50?'good':'bad'}">${row.overallImprovedPct.toFixed(0)}%</span></td>`;
