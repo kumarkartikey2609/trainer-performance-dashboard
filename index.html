@@ -515,6 +515,7 @@ function fallbackCopy(text, onDone){
   }catch(e){ console.warn('Copy failed', e); }
 }
 const STORAGE_KEY = 'trainerPerfDashboardData_v2';
+const DATA_FETCHED_AT = 'August 5, 2026, 9:52 PM (Asia/Riyadh)';
 
 if(typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 Chart.defaults.set('plugins.datalabels', { display:false }); // opt-in per chart below so nothing gets labelled by accident
@@ -626,7 +627,28 @@ class Dashboard{
     const overlay = document.getElementById('drilldown-modal');
     overlay.addEventListener('click', (e) => { if(e.target === overlay) this.closeDrilldown(); });
     document.addEventListener('keydown', (e) => { if(e.key === 'Escape') this.closeDrilldown(); });
-    this.loadFromStorage();
+    this.loadInitialData();
+  }
+
+  async loadInitialData(){
+    const statusEl = document.getElementById('upload-status');
+    try{
+      const res = await fetch('./data_trainer_performance.csv', {cache:'no-store'});
+      if(!res.ok) throw new Error('no bundled data file');
+      const text = await res.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      this.rawData = parsed.data.map(normalizeRow).filter(r => r.provider_id);
+      if(!this.rawData.length) throw new Error('bundled file had no rows');
+      statusEl.textContent = `Loaded ${this.rawData.length.toLocaleString()} rows (auto-fetched)`;
+      document.getElementById('clear-data-btn').style.display = 'none';
+      document.getElementById('data-date').textContent = 'Data as of: ' + DATA_FETCHED_AT;
+      document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('dashboard-body').style.display = 'block';
+      this.init();
+    }catch(e){
+      console.warn('Auto-fetch failed, falling back to saved/upload flow.', e);
+      this.loadFromStorage();
+    }
   }
 
   loadFromStorage(){
@@ -1388,7 +1410,28 @@ class PostRetrainingTab{
     document.getElementById('tab2-csv-input').addEventListener('change', (e) => this.handleFile(e));
     document.getElementById('tab2-search').addEventListener('input', () => this.renderAll());
     document.getElementById('tab2-clear-data-btn').addEventListener('click', () => this.clearStoredData());
-    this.loadFromStorage();
+    this.loadInitialData();
+  }
+
+  async loadInitialData(){
+    const statusEl = document.getElementById('tab2-upload-status');
+    try{
+      const res = await fetch('./data_post_retraining_ratings.csv', {cache:'no-store'});
+      if(!res.ok) throw new Error('no bundled data file');
+      const text = await res.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      this.rawData = parsed.data.map(normalizeRatingRow).filter(r => r.provider_id);
+      if(!this.rawData.length) throw new Error('bundled file had no rows');
+      statusEl.textContent = `Loaded ${this.rawData.length.toLocaleString()} rows (auto-fetched)`;
+      document.getElementById('tab2-clear-data-btn').style.display = 'none';
+      document.getElementById('tab2-data-date').textContent = 'Data as of: ' + DATA_FETCHED_AT;
+      document.getElementById('tab2-empty-state').style.display = 'none';
+      document.getElementById('tab2-body').style.display = 'block';
+      this.renderAll();
+    }catch(e){
+      console.warn('Auto-fetch failed, falling back to saved/upload flow.', e);
+      this.loadFromStorage();
+    }
   }
 
   loadFromStorage(){
