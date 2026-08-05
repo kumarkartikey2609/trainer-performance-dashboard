@@ -357,6 +357,13 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans
       <div id="pivot-table-wrap" style="max-height:460px;overflow:auto;"></div>
     </section>
 
+    <section class="pivot-section" id="sec-cohort-monthly">
+      <div class="section-eyebrow">Monthly Trend Matrix</div>
+      <h3>Monthly Pass Rate — F20 Completed vs Under F20</h3>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;">All trainers combined, reflecting the Trainer, City, Level, Category and Month filters above (the Cool Off Period filter is ignored here since both cohorts are shown side by side). Double-click any number to view the raw providers behind it.</p>
+      <div id="cohort-monthly-table-wrap" style="max-height:460px;overflow:auto;"></div>
+    </section>
+
     <div class="section-block" id="sec-charts-1">
       <div class="section-eyebrow">Rating &amp; Volume Trends</div>
       <section class="chart-row">
@@ -912,6 +919,7 @@ class Dashboard{
     this.renderLevelImprovement();
     setTimeout(() => {
       this.renderPivot();
+      this.renderCohortMonthlyTable();
       setTimeout(() => { this.renderDetailTable(); }, 0);
     }, 0);
   }
@@ -1090,6 +1098,73 @@ class Dashboard{
         scales:{ y:{ beginAtZero:true, position:'left', title:{display:true,text:'Events'} },
                  y1:{ beginAtZero:true, max:5, position:'right', grid:{drawOnChartArea:false}, title:{display:true,text:'Avg Rating'} } } }
     });
+  }
+
+  renderCohortMonthlyTable(){
+    // Same filters as the main pivot EXCEPT Cool Off Period, since this table's
+    // whole point is to put the F20-Completed and Under-F20 cohorts side by side.
+    const trainer = document.getElementById('f-trainer').value;
+    const city = document.getElementById('f-city').value;
+    const level = document.getElementById('f-level').value;
+    const basisData = this.rawData.filter(r => {
+      if(trainer !== 'all' && r.trainer_name !== trainer) return false;
+      if(city !== 'all' && r.city !== city) return false;
+      if(level !== 'all' && String(r.level) !== level) return false;
+      if(r.category && this.categorySelections.size && !this.categorySelections.has(r.category)) return false;
+      if(this.monthSelections.size && !this.monthSelections.has(r.monthKey)) return false;
+      return true;
+    });
+
+    const wrap = document.getElementById('cohort-monthly-table-wrap');
+    if(!basisData.length){ wrap.innerHTML = '<p class="pivot-empty">No data for the current filters.</p>'; return; }
+
+    const months = [...new Set(basisData.map(r=>r.monthKey))].filter(m=>m!=='Unknown').sort();
+    const cell = (rows) => {
+      const total = rows.length;
+      const pass = rows.filter(r=>r.improvement===1).length;
+      const pct = total ? pass/total*100 : 0;
+      return { total, pass, pct, rows };
+    };
+    const monthRows = months.map((m, j) => {
+      const inMonth = basisData.filter(r => r.monthKey === m);
+      const f20 = cell(inMonth.filter(r => r.f20completed === 1));
+      const under = cell(inMonth.filter(r => r.f20completed !== 1));
+      return { m, j, f20, under };
+    });
+
+    const pctStyle = (pct, total) => total>0 ? (pct>=70?'background:rgba(16,185,129,.16);color:#047857;font-weight:700;':pct>=50?'background:rgba(245,158,11,.16);color:#b45309;font-weight:700;':'background:rgba(239,68,68,.16);color:#b91c1c;font-weight:700;') : '';
+
+    let html = '<table class="pivot-table"><thead><tr><th class="pivot-trainer-col" rowspan="2">Month</th>';
+    html += '<th colspan="2" class="pivot-band-a" style="border-right:2px solid var(--accent);">F20 Completed</th>';
+    html += '<th colspan="2" class="pivot-band-b">Under F20</th></tr><tr>';
+    html += '<th class="pivot-sub-total pivot-band-a">Pass / Total</th><th class="pivot-sub-pass pivot-band-a" style="border-right:2px solid var(--accent);">Pass %</th>';
+    html += '<th class="pivot-sub-total pivot-band-b">Pass / Total</th><th class="pivot-sub-pass pivot-band-b">Pass %</th>';
+    html += '</tr></thead><tbody>';
+
+    const drillLookup = new Map();
+    monthRows.forEach(({m, j, f20, under}) => {
+      html += `<tr><th class="pivot-trainer-col">${formatMonth(m)}</th>`;
+      html += `<td class="pivot-band-a ${f20.total>0?'drill-cell':''}" ${f20.total>0?`data-drill="f20-${j}"`:''} title="Double-click for raw data">${f20.pass.toLocaleString()} / ${f20.total.toLocaleString()}</td>`;
+      html += `<td class="pivot-band-a" style="${pctStyle(f20.pct,f20.total)}border-right:2px solid var(--accent);">${f20.total>0?f20.pct.toFixed(0)+'%':'—'}</td>`;
+      html += `<td class="pivot-band-b ${under.total>0?'drill-cell':''}" ${under.total>0?`data-drill="under-${j}"`:''} title="Double-click for raw data">${under.pass.toLocaleString()} / ${under.total.toLocaleString()}</td>`;
+      html += `<td class="pivot-band-b" style="${pctStyle(under.pct,under.total)}">${under.total>0?under.pct.toFixed(0)+'%':'—'}</td>`;
+      html += '</tr>';
+      drillLookup.set(`f20-${j}`, { rows: f20.rows, label: `${formatMonth(m)} — F20 Completed` });
+      drillLookup.set(`under-${j}`, { rows: under.rows, label: `${formatMonth(m)} — Under F20` });
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+
+    if(!wrap.dataset.drillWired){
+      wrap.addEventListener('dblclick', (e) => {
+        const el = e.target.closest('[data-drill]');
+        if(!el) return;
+        const entry = wrap.__drillLookup && wrap.__drillLookup.get(el.dataset.drill);
+        if(entry && entry.rows.length) this.openDrilldown(entry.rows, entry.label);
+      });
+      wrap.dataset.drillWired = '1';
+    }
+    wrap.__drillLookup = drillLookup;
   }
 
   renderPivot(){
@@ -1282,9 +1357,13 @@ class Dashboard{
       const f20pct = total ? f20done/total*100 : 0;
       const improvedOfF20 = rs.filter(r=>r.f20completed===1 && r.improvement===1).length;
       const improvedOfF20Pct = f20done ? improvedOfF20/f20done*100 : 0;
+      const underF20 = total - f20done;
+      const underF20Pct = total ? underF20/total*100 : 0;
+      const improvedOfUnderF20 = rs.filter(r=>r.f20completed!==1 && r.improvement===1).length;
+      const improvedOfUnderF20Pct = underF20 ? improvedOfUnderF20/underF20*100 : 0;
       const overallImproved = rs.filter(r=>r.improvement===1).length;
       const overallImprovedPct = total ? overallImproved/total*100 : 0;
-      return { trainer:name, total, f20done, f20pct, improvedOfF20, improvedOfF20Pct, overallImproved, overallImprovedPct, _rawRows: rs };
+      return { trainer:name, total, f20done, f20pct, improvedOfF20, improvedOfF20Pct, underF20, underF20Pct, improvedOfUnderF20, improvedOfUnderF20Pct, overallImproved, overallImprovedPct, _rawRows: rs };
     }).sort((a,b) => b.overallImprovedPct - a.overallImprovedPct);
 
     const container = document.getElementById('trainer-table');
@@ -1294,6 +1373,8 @@ class Dashboard{
       { field:'total', label:'Total Retraining' },
       { field:'f20done', label:'F20 Completed', combo:'f20pct' },
       { field:'improvedOfF20', label:'Improved (of F20 Completed)', combo:'improvedOfF20Pct' },
+      { field:'underF20', label:'Under F20', combo:'underF20Pct' },
+      { field:'improvedOfUnderF20', label:'Improved (of Under F20)', combo:'improvedOfUnderF20Pct' },
       { field:'overallImproved', label:'Overall Improvement', combo:'overallImprovedPct' }
     ];
     const medal = (rank) => rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':null;
@@ -1311,6 +1392,8 @@ class Dashboard{
         html += `<tr class="drill-row" data-drill-idx="${idx}" title="Double-click for this trainer's raw data"><td>${rankCell}</td><td>${row.trainer}</td><td>${row.total.toLocaleString()}</td>`;
         html += `<td>${row.f20done.toLocaleString()} <span class="badge neutral">${row.f20pct.toFixed(0)}%</span></td>`;
         html += `<td>${row.improvedOfF20.toLocaleString()} <span class="badge ${row.improvedOfF20Pct>=50?'good':'bad'}">${row.improvedOfF20Pct.toFixed(0)}%</span></td>`;
+        html += `<td>${row.underF20.toLocaleString()} <span class="badge neutral">${row.underF20Pct.toFixed(0)}%</span></td>`;
+        html += `<td>${row.improvedOfUnderF20.toLocaleString()} <span class="badge ${row.improvedOfUnderF20Pct>=50?'good':'bad'}">${row.improvedOfUnderF20Pct.toFixed(0)}%</span></td>`;
         html += `<td>${row.overallImproved.toLocaleString()} <span class="badge ${row.overallImprovedPct>=50?'good':'bad'}">${row.overallImprovedPct.toFixed(0)}%</span></td>`;
         html += '</tr>';
       });
