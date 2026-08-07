@@ -1133,11 +1133,13 @@ class Dashboard{
       const inMonth = basisData.filter(r => r.monthKey === m);
       const f20 = cell(inMonth.filter(r => r.f20completed === 1));
       const under = cell(inMonth.filter(r => r.f20completed !== 1));
-      return { m, j, f20, under };
+      const combined = cell(inMonth);
+      return { m, j, f20, under, combined };
     });
     // Overall row: all months (that survived the filters above) combined
     const overallF20 = cell(basisData.filter(r => r.f20completed === 1));
     const overallUnder = cell(basisData.filter(r => r.f20completed !== 1));
+    const overallCombined = cell(basisData);
 
     const passStyle = (pct, total) => total>0 ? (pct>=70?'background:rgba(16,185,129,.16);color:#10b981;font-weight:700;':pct>=50?'background:rgba(245,158,11,.16);color:#f59e0b;font-weight:700;':'background:rgba(239,68,68,.16);color:#ef4444;font-weight:700;') : '';
     const failStyle = (pct, total) => total>0 ? (pct<=30?'background:rgba(16,185,129,.16);color:#10b981;font-weight:700;':pct<=50?'background:rgba(245,158,11,.16);color:#f59e0b;font-weight:700;':'background:rgba(239,68,68,.16);color:#ef4444;font-weight:700;') : '';
@@ -1146,23 +1148,29 @@ class Dashboard{
 
     let html = '<table class="pivot-table"><thead><tr><th class="pivot-trainer-col" rowspan="2">Month</th>';
     html += '<th colspan="2" class="pivot-band-a" style="border-right:2px solid var(--accent);">F20 Completed</th>';
-    html += '<th colspan="2" class="pivot-band-b">Under F20</th></tr><tr>';
+    html += '<th colspan="2" class="pivot-band-b" style="border-right:2px solid var(--accent-2);">Under F20</th>';
+    html += '<th colspan="2" class="pivot-overall-head">Overall (F20 + Under F20)</th></tr><tr>';
     html += '<th class="pivot-sub-pass pivot-band-a">Pass</th><th class="pivot-sub-fail pivot-band-a" style="border-right:2px solid var(--accent);">Fail</th>';
-    html += '<th class="pivot-sub-pass pivot-band-b">Pass</th><th class="pivot-sub-fail pivot-band-b">Fail</th>';
+    html += '<th class="pivot-sub-pass pivot-band-b">Pass</th><th class="pivot-sub-fail pivot-band-b" style="border-right:2px solid var(--accent-2);">Fail</th>';
+    html += '<th class="pivot-sub-pass">Pass</th><th class="pivot-sub-fail">Fail</th>';
     html += '</tr></thead><tbody>';
 
     const drillLookup = new Map();
-    monthRows.forEach(({m, j, f20, under}) => {
+    monthRows.forEach(({m, j, f20, under, combined}) => {
       html += `<tr><th class="pivot-trainer-col">${formatMonth(m)}</th>`;
       html += `<td class="pivot-band-a ${f20.pass>0?'drill-cell':''}" ${f20.pass>0?`data-drill="f20-pass-${j}"`:''} style="${passStyle(f20.passPct,f20.total)}" title="Double-click for raw data">${passText(f20)}</td>`;
       html += `<td class="pivot-band-a ${f20.fail>0?'drill-cell':''}" ${f20.fail>0?`data-drill="f20-fail-${j}"`:''} style="${failStyle(f20.failPct,f20.total)}border-right:2px solid var(--accent);" title="Double-click for raw data">${failText(f20)}</td>`;
       html += `<td class="pivot-band-b ${under.pass>0?'drill-cell':''}" ${under.pass>0?`data-drill="under-pass-${j}"`:''} style="${passStyle(under.passPct,under.total)}" title="Double-click for raw data">${passText(under)}</td>`;
-      html += `<td class="pivot-band-b ${under.fail>0?'drill-cell':''}" ${under.fail>0?`data-drill="under-fail-${j}"`:''} style="${failStyle(under.failPct,under.total)}" title="Double-click for raw data">${failText(under)}</td>`;
+      html += `<td class="pivot-band-b ${under.fail>0?'drill-cell':''}" ${under.fail>0?`data-drill="under-fail-${j}"`:''} style="${failStyle(under.failPct,under.total)}border-right:2px solid var(--accent-2);" title="Double-click for raw data">${failText(under)}</td>`;
+      html += `<td class="overall-col ${combined.pass>0?'drill-cell':''}" ${combined.pass>0?`data-drill="combined-pass-${j}"`:''} style="${passStyle(combined.passPct,combined.total)}font-weight:700;" title="Double-click for raw data">${passText(combined)}</td>`;
+      html += `<td class="overall-col ${combined.fail>0?'drill-cell':''}" ${combined.fail>0?`data-drill="combined-fail-${j}"`:''} style="${failStyle(combined.failPct,combined.total)}font-weight:700;" title="Double-click for raw data">${failText(combined)}</td>`;
       html += '</tr>';
       drillLookup.set(`f20-pass-${j}`, { rows: f20.passRows, label: `${formatMonth(m)} — F20 Completed — Pass` });
       drillLookup.set(`f20-fail-${j}`, { rows: f20.failRows, label: `${formatMonth(m)} — F20 Completed — Fail` });
       drillLookup.set(`under-pass-${j}`, { rows: under.passRows, label: `${formatMonth(m)} — Under F20 — Pass` });
       drillLookup.set(`under-fail-${j}`, { rows: under.failRows, label: `${formatMonth(m)} — Under F20 — Fail` });
+      drillLookup.set(`combined-pass-${j}`, { rows: combined.passRows, label: `${formatMonth(m)} — Overall (F20 + Under F20) — Pass` });
+      drillLookup.set(`combined-fail-${j}`, { rows: combined.failRows, label: `${formatMonth(m)} — Overall (F20 + Under F20) — Fail` });
     });
 
     // Overall summary row, visually separated from the monthly rows
@@ -1170,12 +1178,16 @@ class Dashboard{
     html += `<td class="pivot-band-a ${overallF20.pass>0?'drill-cell':''}" ${overallF20.pass>0?`data-drill="overall-f20-pass"`:''} style="${passStyle(overallF20.passPct,overallF20.total)}font-weight:800;" title="Double-click for raw data">${passText(overallF20)}</td>`;
     html += `<td class="pivot-band-a ${overallF20.fail>0?'drill-cell':''}" ${overallF20.fail>0?`data-drill="overall-f20-fail"`:''} style="${failStyle(overallF20.failPct,overallF20.total)}border-right:2px solid var(--accent);font-weight:800;" title="Double-click for raw data">${failText(overallF20)}</td>`;
     html += `<td class="pivot-band-b ${overallUnder.pass>0?'drill-cell':''}" ${overallUnder.pass>0?`data-drill="overall-under-pass"`:''} style="${passStyle(overallUnder.passPct,overallUnder.total)}font-weight:800;" title="Double-click for raw data">${passText(overallUnder)}</td>`;
-    html += `<td class="pivot-band-b ${overallUnder.fail>0?'drill-cell':''}" ${overallUnder.fail>0?`data-drill="overall-under-fail"`:''} style="${failStyle(overallUnder.failPct,overallUnder.total)}font-weight:800;" title="Double-click for raw data">${failText(overallUnder)}</td>`;
+    html += `<td class="pivot-band-b ${overallUnder.fail>0?'drill-cell':''}" ${overallUnder.fail>0?`data-drill="overall-under-fail"`:''} style="${failStyle(overallUnder.failPct,overallUnder.total)}border-right:2px solid var(--accent-2);font-weight:800;" title="Double-click for raw data">${failText(overallUnder)}</td>`;
+    html += `<td class="overall-col ${overallCombined.pass>0?'drill-cell':''}" ${overallCombined.pass>0?`data-drill="overall-combined-pass"`:''} style="${passStyle(overallCombined.passPct,overallCombined.total)}font-weight:800;" title="Double-click for raw data">${passText(overallCombined)}</td>`;
+    html += `<td class="overall-col ${overallCombined.fail>0?'drill-cell':''}" ${overallCombined.fail>0?`data-drill="overall-combined-fail"`:''} style="${failStyle(overallCombined.failPct,overallCombined.total)}font-weight:800;" title="Double-click for raw data">${failText(overallCombined)}</td>`;
     html += '</tr>';
     drillLookup.set('overall-f20-pass', { rows: overallF20.passRows, label: 'Overall — F20 Completed — Pass' });
     drillLookup.set('overall-f20-fail', { rows: overallF20.failRows, label: 'Overall — F20 Completed — Fail' });
     drillLookup.set('overall-under-pass', { rows: overallUnder.passRows, label: 'Overall — Under F20 — Pass' });
     drillLookup.set('overall-under-fail', { rows: overallUnder.failRows, label: 'Overall — Under F20 — Fail' });
+    drillLookup.set('overall-combined-pass', { rows: overallCombined.passRows, label: 'Overall — Overall (F20 + Under F20) — Pass' });
+    drillLookup.set('overall-combined-fail', { rows: overallCombined.failRows, label: 'Overall — Overall (F20 + Under F20) — Fail' });
 
     html += '</tbody></table>';
     wrap.innerHTML = html;
