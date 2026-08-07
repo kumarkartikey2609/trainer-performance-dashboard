@@ -1198,11 +1198,12 @@ class Dashboard{
       return { name, byMonth, overall };
     }).sort((a,b) => b.overall.failRows.length - a.overall.failRows.length || b.overall.total - a.overall.total);
 
-    const sub = (val, type) => {
+    const sub = (val, type, total) => {
       if(val === null || val === undefined) return { text:'—', style:'' };
+      const pctText = (total > 0) ? ` <span style="opacity:.75;font-weight:600;">(${(val/total*100).toFixed(0)}%)</span>` : '';
       if(type === 'total') return { text: val.toLocaleString(), style: val>0 ? `background:var(--accent-soft);font-weight:700;` : '' };
-      if(type === 'pass') return { text: val.toLocaleString(), style: val>0 ? `background:rgba(16,185,129,.16);color:#10b981;font-weight:700;` : '' };
-      return { text: val.toLocaleString(), style: val>0 ? `background:rgba(239,68,68,.16);color:#ef4444;font-weight:700;` : '' };
+      if(type === 'pass') return { text: val.toLocaleString() + pctText, style: val>0 ? `background:rgba(16,185,129,.16);color:#10b981;font-weight:700;` : '' };
+      return { text: val.toLocaleString() + pctText, style: val>0 ? `background:rgba(239,68,68,.16);color:#ef4444;font-weight:700;` : '' };
     };
 
     // group divider: thick right border after the 3rd (Fail) sub-column of every month block
@@ -1249,7 +1250,7 @@ class Dashboard{
       html += `<td class="pivot-trend-cell">${sparkline(tr.byMonth)}</td>`;
       months.forEach((m, j) => {
         const cell = tr.byMonth[m];
-        const t = sub(cell.total, 'total'), p = sub(cell.passRows.length, 'pass'), f = sub(cell.failRows.length, 'fail');
+        const t = sub(cell.total, 'total'), p = sub(cell.passRows.length, 'pass', cell.total), f = sub(cell.failRows.length, 'fail', cell.total);
         const bandCls = band(j);
         html += `<td class="${bandCls} ${cell.total>0?'drill-cell':''}" ${cell.total>0?`data-drill="t-${i}-${j}-total" title="Double-click for raw data"`:''} style="${t.style}">${t.text}</td>`;
         html += `<td class="${bandCls} ${cell.total>0?'drill-cell':''}" ${cell.total>0?`data-drill="t-${i}-${j}-pass" title="Double-click for raw data"`:''} style="${p.style}">${p.text}</td>`;
@@ -1257,7 +1258,7 @@ class Dashboard{
       });
       if(showOverall){
         const ov = tr.overall;
-        const t = sub(ov.total, 'total'), p = sub(ov.passRows.length, 'pass'), f = sub(ov.failRows.length, 'fail');
+        const t = sub(ov.total, 'total'), p = sub(ov.passRows.length, 'pass', ov.total), f = sub(ov.failRows.length, 'fail', ov.total);
         html += `<td class="overall-col ${ov.total>0?'drill-cell':''}" ${ov.total>0?`data-drill="t-${i}-overall-total" title="Double-click for raw data"`:''} style="${t.style}border-left:2px solid var(--accent-2);">${t.text}</td>`;
         html += `<td class="overall-col ${ov.total>0?'drill-cell':''}" ${ov.total>0?`data-drill="t-${i}-overall-pass" title="Double-click for raw data"`:''} style="${p.style}">${p.text}</td>`;
         html += `<td class="overall-col ${ov.total>0?'drill-cell':''}" ${ov.total>0?`data-drill="t-${i}-overall-fail" title="Double-click for raw data"`:''} style="${f.style}">${f.text}</td>`;
